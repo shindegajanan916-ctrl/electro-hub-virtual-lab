@@ -1,0 +1,173 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ELECTRO HUB - Virtual Lab</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial;background:#101827;color:white}
+header{padding:16px;background:#07111f;text-align:center}
+h1{color:#38bdf8;margin:0}
+main{display:flex;gap:12px;padding:12px;flex-wrap:wrap}
+#tools{width:170px;min-width:140px}
+.part{background:#23344d;padding:12px;margin:8px 0;border-radius:8px;cursor:grab;text-align:center}
+#board{position:relative;flex:1;min-width:290px;min-height:490px;background:#dce5e9;border-radius:12px;padding:18px;overflow:hidden}
+.rail{height:16px;background:#ef7777;margin:8px 0;border-radius:8px}
+.rail.gnd{background:#4d8fe8}
+.holes{display:grid;grid-template-columns:repeat(15,1fr);gap:9px;padding:12px 4px}
+.hole{width:9px;height:9px;border-radius:50%;background:#70818c;justify-self:center}
+#parts{position:absolute;inset:0;pointer-events:none}
+.component{position:absolute;pointer-events:auto;cursor:move;touch-action:none;user-select:none}
+.ic{background:#17202c;color:white;border:2px solid #111;border-radius:5px;padding:10px 8px;width:150px;text-align:center;font-size:12px}
+.ic .pins{display:flex;justify-content:space-around;margin-top:8px}
+.term{width:13px;height:13px;background:#facc15;border:2px solid #785c00;border-radius:50%;display:inline-block;cursor:crosshair;touch-action:none}
+.small{background:#f5c542;color:#111;padding:8px;border-radius:5px;text-align:center;min-width:75px}
+.led{width:34px;height:34px;border-radius:50%;background:#555;border:3px solid #222}
+#overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#status{padding:12px;background:#07111f;margin:12px;border-radius:8px}
+button{padding:9px;background:#0284c7;color:white;border:0;border-radius:6px;cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+<h1>ELECTRO HUB</h1>
+<p>2D Virtual Electronics Laboratory</p>
+</header>
+<main>
+<aside id="tools">
+<h3>Components</h3>
+<div class="part" draggable="true" data-type="ic">7408 AND Gate IC</div>
+<div class="part" draggable="true" data-type="power">Power Supply</div>
+<div class="part" draggable="true" data-type="led">LED</div>
+<div class="part" draggable="true" data-type="resistor">Resistor</div>
+<div class="part" draggable="true" data-type="switch">Input Switch</div>
+<p style="font-size:12px;color:#b9c9d9">Drag components onto the breadboard. Drag from one yellow terminal to another to connect a wire.</p>
+</aside>
+<section id="board">
+<div class="rail">+ POWER RAIL</div>
+<div class="holes" id="holes"></div>
+<div class="rail gnd">− GROUND RAIL</div>
+<div class="holes" id="holes2"></div>
+<svg id="overlay"></svg>
+<div id="parts"></div>
+</section>
+</main>
+<div id="status">Place components and connect their terminals. First experiment: 7408 AND Gate.</div>
+<script>
+const board=document.getElementById('board');
+const parts=document.getElementById('parts');
+const svg=document.getElementById('overlay');
+for(let i=0;i<150;i++){
+ for(const id of ['holes','holes2']){
+  const h=document.createElement('span');h.className='hole';
+  document.getElementById(id).appendChild(h);
+ }
+}
+let count=0, wires=[], start=null, temp=null;
+const labels={
+ ic:['1 A','2 B','3 Y','7 GND','14 +5V'],
+ power:['+5V','GND'],
+ led:['Anode','Cathode'],
+ resistor:['End 1','End 2'],
+ switch:['Output']
+};
+function addPart(type,x,y){
+ const el=document.createElement('div');
+ el.className='component';el.style.left=x+'px';el.style.top=y+'px';
+ el.dataset.type=type;el.dataset.id='p'+(++count);
+ let name={ic:'7408 AND Gate',power:'Power Supply',led:'LED',resistor:'Resistor',switch:'Input Switch'}[type];
+ el.innerHTML='<div class="'+(type==='ic'?'ic':'small')+'"><b>'+name+'</b><div class="pins">'+labels[type].map((t,i)=>'<span style="text-align:center"><small>'+t+'</small><br><span class="term" data-pin="'+i+'"></span></span>').join('')+'</div></div>';
+ parts.appendChild(el);
+ el.querySelectorAll('.term').forEach(t=>{
+  t.addEventListener('pointerdown',e=>{e.stopPropagation();startWire(el,t);});
+  t.addEventListener('pointerup',e=>{e.stopPropagation();endWire(el,t);});
+ });
+ el.addEventListener('pointerdown',e=>{
+  if(e.target.classList.contains('term'))return;
+  const r=el.getBoundingClientRect(), b=board.getBoundingClientRect();
+  let ox=e.clientX-r.left,oy=e.clientY-r.top;
+  function move(ev){
+   el.style.left=(ev.clientX-b.left-ox)+'px';
+   el.style.top=(ev.clientY-b.top-oy)+'px';
+   draw();
+  }
+  function up(){window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);}
+  window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);
+ });
+}
+document.querySelectorAll('.part').forEach(p=>{
+ p.addEventListener('dragstart',e=>e.dataTransfer.setData('type',p.dataset.type));
+});
+board.addEventListener('dragover',e=>e.preventDefault());
+board.addEventListener('drop',e=>{
+ e.preventDefault();
+ const type=e.dataTransfer.getData('type');
+ if(type)addPart(type,e.clientX-board.getBoundingClientRect().left,e.clientY-board.getBoundingClientRect().top);
+});
+function point(el,t){
+ const a=t.getBoundingClientRect(),b=board.getBoundingClientRect();
+ return {x:a.left-b.left+a.width/2,y:a.top-b.top+a.height/2};
+}
+function startWire(el,t){start={el,t};}
+function endWire(el,t){
+ if(!start)return;
+ if(start.el!==el || start.t!==t){
+  wires.push({a:start,b:{el,t}});
+  draw();evaluate();
+ }
+ start=null;
+}
+function draw(){
+ svg.innerHTML='';
+ wires.forEach(w=>{
+  const a=point(w.a.el,w.a.t),b=point(w.b.el,w.b.t);
+  const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1',a.x);line.setAttribute('y1',a.y);
+  line.setAttribute('x2',b.x);line.setAttribute('y2',b.y);
+  line.setAttribute('stroke','#e33b32');line.setAttribute('stroke-width','4');
+  svg.appendChild(line);
+ });
+}
+function connected(p1,pin1,p2,pin2){
+ return wires.some(w=>
+ (w.a.el===p1&&w.a.t.dataset.pin===String(pin1)&&w.b.el===p2&&w.b.t.dataset.pin===String(pin2))||
+ (w.b.el===p1&&w.b.t.dataset.pin===String(pin1)&&w.a.el===p2&&w.a.t.dataset.pin===String(pin2))
+ );
+}
+function evaluate(){
+ const all=[...parts.children];
+ const ic=all.find(x=>x.dataset.type==='ic');
+ const ps=all.find(x=>x.dataset.type==='power');
+ const sw=all.filter(x=>x.dataset.type==='switch');
+ const led=all.find(x=>x.dataset.type==='led');
+ const resistor=all.find(x=>x.dataset.type==='resistor');
+ if(!ic||!ps||sw.length<2||!led||!resistor){
+  document.getElementById('status').textContent='Place the IC, power supply, two input switches, resistor and LED.';
+  return;
+ }
+ const power=connected(ps,0,ic,4);
+ const ground=connected(ps,1,ic,3);
+ const a=connected(sw[0],0,ic,0);
+ const b=connected(sw[1],0,ic,1);
+ const output=connected(ic,2,resistor,0);
+ const ledIn=connected(resistor,1,led,0);
+ const ledOut=connected(led,1,ps,1);
+ const ready=power&&ground&&a&&b&&output&&ledIn&&ledOut;
+ const on=ready&&sw[0].dataset.value==='1'&&sw[1].dataset.value==='1';
+ led.querySelector('.small').style.background=on?'#00ff45':'#f5c542';
+ document.getElementById('status').textContent=ready?(on?'Output HIGH (1) — LED ON':'Output LOW (0) — LED OFF'):'Connect +5V, GND, both inputs, output, resistor and LED correctly.';
+}
+document.addEventListener('click',e=>{
+ const el=e.target.closest('.component');
+ if(el&&el.dataset.type==='switch'){
+  el.dataset.value=el.dataset.value==='1'?'0':'1';
+  el.querySelector('.small').style.background=el.dataset.value==='1'?'#22c55e':'#f5c542';
+  evaluate();
+ }
+});
+window.addEventListener('resize',draw);
+</script>
+</body>
+</html>
